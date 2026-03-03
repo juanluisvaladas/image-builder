@@ -1,0 +1,20 @@
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.25.7-alpine3.23 AS build
+# https://github.com/kubernetes/kubernetes/blob/821bc2e15e3abadb996d477f2bfb59466cec01e0/build/pause/Makefile#L20
+ENV VERSION=3.10.1
+ENV HASH=26fe80855d14b50136986bc9806b96e72124a97e
+
+RUN apk add --no-cache mingw-w64-gcc
+
+# https://github.com/kubernetes/kubernetes/blob/master/build/pause/windows/pause.c
+RUN wget https://github.com/kubernetes/kubernetes/raw/$HASH/build/pause/windows/pause.c \
+         https://github.com/kubernetes/kubernetes/raw/$HASH/build/pause/windows/wincat/wincat.go
+
+RUN x86_64-w64-mingw32-gcc -Os -Wall -Werror -static -DVERSION=v3.10.2-26fe80855d1 -o pause.exe pause.c
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o wincat.exe wincat.go
+
+FROM mcr.microsoft.com/oss/v2/kubernetes/windows-pause-image-base:v0.4.1
+LABEL org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/kubernetes/kubernetes"
+COPY --from=build /go/pause.exe /pause.exe
+COPY --from=build /go/wincat.exe /Windows/System32/wincat.exe
+ENTRYPOINT ["/pause.exe"]
